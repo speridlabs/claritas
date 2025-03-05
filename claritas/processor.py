@@ -138,6 +138,8 @@ class ImageProcessor:
             images_per_group = target_count // groups
             selected = []
             
+            print(f"Processing {total} images in {groups} groups, selecting {images_per_group} from each group of ~{group_size} images")
+            
             # Process each temporal group separately
             for i in range(groups):
                 start = i * group_size
