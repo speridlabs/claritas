@@ -49,6 +49,9 @@ class SharpnessCache:
             'size': path_stat.st_size
         }
         
-    def _get_cache_key(self, image_path):
+    def _get_cache_key(self, image_path:Path)->str:
         """Generate cache key for image."""
-        return str(Path(image_path).absolute())
+        try:
+            return Path(image_path).name
+        except Exception:
+            raise ValueError("Invalid image path for cache")

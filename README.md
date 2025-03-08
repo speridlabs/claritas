@@ -10,6 +10,7 @@ A Python library for selecting and managing sharp images from videos or image co
 - Parallel processing support
 - Progress visualization
 - In-place or copy mode operations
+- CUDA support native
 
 ## Installation
 

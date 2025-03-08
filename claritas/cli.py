@@ -8,8 +8,10 @@ def main():
     )
     parser.add_argument('--input', required=True, help="Path to the input video or folder of images")
     parser.add_argument('--output', help="Directory to save the preserved images. Will modify in-place if not specified.")
-    parser.add_argument('--count', type=int, required=True, help="Target number of images to retain")
-    parser.add_argument('--groups', type=int, help="Number of groups for distribution")
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument('--count', type=int, help="Target number of images to retain")
+    group.add_argument('--percentage', type=float, help="Percentage of images to retain (0-100)")
+    parser.add_argument('--groups', type=int, help="Number of groups for distribution. Will apply percentage/count per group")
     parser.add_argument('--workers', type=int, help="Number of parallel workers")
     parser.add_argument('--no-cache', action='store_true', help="Disable caching of sharpness calculations")
     parser.add_argument('--no-progress', action='store_true', help="Hide progress bars")
@@ -33,13 +35,22 @@ def main():
         else:
             input_path = args.input
             
+        # Validate percentage if provided
+        if args.percentage is not None:
+            if not 0 <= args.percentage <= 100:
+                raise ValueError("Percentage must be between 0 and 100")
+            
         selected = processor.select_sharp_images(
             input_path=input_path,
             output_path=None if args.in_place else args.output,
             target_count=args.count,
+            target_percentage=args.percentage if args.percentage is not None else None,
             groups=args.groups
         )
         print(f"Successfully processed {len(selected)} images")
+    except KeyboardInterrupt:
+        print("\nProcess interrupted by user")
+        return 130  # Standard Unix practice for Ctrl+C
     except Exception as e:
         print(f"Error: {str(e)}")
         return 1

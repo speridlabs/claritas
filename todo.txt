@@ -1,0 +1,21 @@
+
+
+
+60fps
+
+    1st
+    -> group by 30f
+    -> select 6 best frames
+    2nd
+    -> group by 6f
+    -> select best frame
+
+al reves 60fp
+
+
+    1st 
+    - group by 10 frames 
+    - select 2 best
+    1nd
+    - group by 12frames
+    - select 2 frames

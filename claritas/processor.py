@@ -52,14 +52,23 @@ class ImageProcessor:
         
     def compute_sharpness(self, image_path):
         """Compute image sharpness score."""
+        image_path = Path(image_path).resolve()  # Get absolute path and resolve symlinks
+
         if self.use_cache:
             cached = self.cache.get(image_path)
             if cached is not None:
                 return cached
+
+        try:
+
+            if not image_path.exists():
+                raise FileNotFoundError(f"Image file not found: {image_path}")
                 
-        img = cv2.imread(str(image_path))
-        if img is None:
-            return 0
+            img = cv2.imread(str(image_path))
+            if img is None:
+                raise ValueError(f"Failed to read image: {image_path}")
+        except Exception as e:
+            raise ValueError(f"Error reading image {image_path}: {str(e)}")
             
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         
@@ -72,7 +81,9 @@ class ImageProcessor:
                 score = laplacian.download().var()
             else:
                 score = cv2.Laplacian(gray, cv2.CV_64F).var()
-        except:
+        except Exception as e:
+            if self.show_progress:
+                print(f"CUDA processing failed, falling back to CPU: {str(e)}")
             score = cv2.Laplacian(gray, cv2.CV_64F).var()
             
         if self.use_cache:
@@ -80,7 +91,7 @@ class ImageProcessor:
             
         return score
         
-    def select_sharp_images(self, input_path, output_path=None, target_count=None, groups=None):
+    def select_sharp_images(self, input_path, output_path=None, target_count=None, target_percentage=None, groups=None):
         """
         Select sharp images from input directory.
         
@@ -98,7 +109,7 @@ class ImageProcessor:
 
         if self.use_cache:
             cache_path = input_path / '.claritas_cache.json'
-            self.cache.cache_file = cache_path
+            self.cache = SharpnessCache(cache_path)
             
         in_place = output_path is None
         if not in_place:
@@ -111,47 +122,74 @@ class ImageProcessor:
         if not images:
             raise ValueError("No images found")
             
+        # Print processing info upfront
+        total = len(images)
+        # Print processing info
+        if groups:
+            if groups > total:
+                groups = total  # Adjust groups if too many
+            group_size = max(1, total // groups)
+            if target_percentage is not None:
+                # Calculate how many images to keep in each group based on percentage
+                images_per_group = max(1, int(round((target_percentage / 100.0) * group_size)))
+                total_selected = images_per_group * groups
+                print(f"Processing {total} images in {groups} groups, selecting {images_per_group} ({target_percentage}%) from each group of ~{group_size} images")
+            else:
+                images_per_group = max(1, target_count // groups)
+                remainder = target_count % groups  # Handle non-divisible target count
+                total_selected = target_count
+                print(f"Processing {total} images in {groups} groups, selecting {images_per_group} from each group of ~{group_size} images (plus {remainder} extra)")
+        else:
+            if target_percentage is not None:
+                total_selected = max(1, int(round((target_percentage / 100.0) * total)))
+                print(f"Processing {total} images, selecting {total_selected} images ({target_percentage}%)")
+            else:
+                total_selected = min(target_count, total)
+                print(f"Processing {total} images, selecting {total_selected} images")
+        
         # Compute sharpness scores
         scores = []
         with ThreadPoolExecutor(max_workers=self.workers) as executor:
             future_to_path = {executor.submit(self.compute_sharpness, img): img 
                             for img in images}
-            
-            if self.show_progress:
-                futures = tqdm(future_to_path, total=len(images), desc="Computing sharpness")
-            else:
-                futures = future_to_path
-                
-            for future in futures:
-                path = future_to_path[future]
-                try:
-                    score = future.result()
-                    scores.append((score, path))
-                except Exception as e:
-                    print(f"Error processing {path}: {e}")
+            try:
+                if self.show_progress:
+                    futures = tqdm(future_to_path, total=len(images), desc="Computing sharpness")
+                else:
+                    futures = future_to_path
+                    
+                for future in futures:
+                    path = future_to_path[future]
+                    try:
+                        score = future.result()
+                        scores.append((score, path))
+                    except Exception as e:
+                        print(f"Error processing {path}: {e}")
+            except KeyboardInterrupt:
+                print("\nInterrupted by user. Shutting down...")
+                executor.shutdown(wait=False, cancel_futures=True)
+                raise
                     
         # Handle grouping
         if groups:
-            # Split into temporal groups first (maintaining original order)
-            total = len(scores)
-            group_size = total // groups
-            images_per_group = target_count // groups
             selected = []
-            
-            print(f"Processing {total} images in {groups} groups, selecting {images_per_group} from each group of ~{group_size} images")
-            
+            # Split into temporal groups first (maintaining original order)
             # Process each temporal group separately
+            remainder = 0 if target_percentage is not None else target_count % groups
             for i in range(groups):
                 start = i * group_size
                 end = start + group_size if i < groups - 1 else total
                 # Sort sharpness scores WITHIN this group only
                 group_scores = scores[start:end]
                 group_scores.sort(reverse=True)
-                selected.extend(path for _, path in group_scores[:images_per_group])
+                # Add one extra image to early groups if we have remainder
+                this_group_count = images_per_group + (1 if i < remainder else 0)
+                selected.extend(path for _, path in group_scores[:this_group_count])
         else:
             # No grouping - sort all by sharpness
             scores.sort(reverse=True)
-            selected = [path for _, path in scores[:target_count]]
+            # Use total_selected instead of target_count since it's calculated for both percentage and count modes
+            selected = [path for _, path in scores[:total_selected]]
             
         # Process files
         if in_place:
@@ -161,15 +199,25 @@ class ImageProcessor:
                     path.unlink()
         else:
             # Copy selected files
-            self.output_path.mkdir(parents=True, exist_ok=True)
-            for path in selected:
-                shutil.copy2(path, self.output_path / path.name)
-                
+            output_path.mkdir(parents=True, exist_ok=True)
+
+            def copy_file(src):
+                shutil.copy2(src, output_path / src.name)
+
+            with ThreadPoolExecutor(max_workers=self.workers) as copy_executor:
+                # Using executor.map with tqdm for progress display
+                try:
+                    list(tqdm(copy_executor.map(copy_file, selected), total=len(selected), desc="Copying images"))
+                except KeyboardInterrupt:
+                    print("\nInterrupted by user. Shutting down...")
+                    copy_executor.shutdown(wait=False)
+
         if self.use_cache:
             self.cache.save()
             # save in output cache also
-            output_cache = output_path / '.claritas_cache.json'
-            self.cache.cache_file = output_cache
-            self.cache.save()
+            if not in_place:
+                output_cache = output_path / '.claritas_cache.json'
+                self.cache.cache_file = output_cache
+                self.cache.save()
             
         return selected
