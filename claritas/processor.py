@@ -8,9 +8,21 @@ from concurrent.futures import ThreadPoolExecutor
 from tqdm import tqdm
 import subprocess
 from .cache import SharpnessCache
+import shutil
+
+def check_ffmpeg():
+    """Check if ffmpeg is installed and accessible."""
+    if shutil.which('ffmpeg') is None:
+        raise RuntimeError(
+            "ffmpeg not found. Please install ffmpeg first.\n"
+            "On Ubuntu/Debian: sudo apt-get install ffmpeg\n"
+            "On MacOS: brew install ffmpeg\n"
+            "On Windows: Download from https://www.ffmpeg.org/download.html"
+        )
 
 class ImageProcessor:
     def __init__(self, workers=None, show_progress=True, use_cache=True):
+        check_ffmpeg()  # Verify ffmpeg is installed
         """
         Initialize the image processor.
         
