@@ -8,7 +8,7 @@ def main():
     )
     parser.add_argument('--input', required=True, help="Path to the input video or folder of images")
     parser.add_argument('--output', help="Directory to save the preserved images. Will modify in-place if not specified.")
-    group = parser.add_mutually_exclusive_group(required=True)
+    group = parser.add_mutually_exclusive_group()
     group.add_argument('--count', type=int, help="Target number of images to retain")
     group.add_argument('--percentage', type=float, help="Percentage of images to retain (0-100)")
     parser.add_argument('--groups', type=int, help="Number of groups for distribution. Will apply percentage/count per group")
@@ -30,10 +30,18 @@ def main():
         if args.input.lower().endswith(('.mp4', '.avi', '.mov', '.mkv')):
             if not args.output:
                 raise ValueError("Output directory required for video processing")
-            processor.process_video(args.input, args.output)
-            input_path = args.output
+            # For video input, just extract frames if no count/percentage specified
+            if not (args.count or args.percentage):
+                processor.process_video(args.input, args.output)
+                print(f"Successfully extracted frames to {args.output}")
+                return 0
+            else:
+                processor.process_video(args.input, args.output)
+                input_path = args.output
         else:
             input_path = args.input
+            if not (args.count or args.percentage):
+                raise ValueError("Either --count or --percentage must be specified for image folder processing")
             
         # Validate percentage if provided
         if args.percentage is not None:
