@@ -2,13 +2,13 @@ import os
 import cv2
 import json
 import shutil
-import numpy as np
+import subprocess
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
+
+import numpy as np
 from tqdm import tqdm
-import subprocess
 from .cache import SharpnessCache
-import shutil
 
 def check_ffmpeg():
     """Check if ffmpeg is installed and accessible."""
