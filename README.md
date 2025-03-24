@@ -56,7 +56,12 @@ claritas --input input/folder --output output/folder --count 100 --groups 10
 
 Or to modify in-place:
 ```bash
-claritas --input input/folder --count 100 --in-place
+claritas --input input/folder --count 100
+```
+
+Or to resize:
+```bash
+claritas --input input/folder --resize 1000
 ```
 
 For more information, see the [documentation](https://github.com/yourusername/claritas).
