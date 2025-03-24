@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 
 class SharpnessCache:
-    def __init__(self, cache_file=".claritas_cache.json"):
+    def __init__(self, cache_file:str=".claritas_cache.json"):
         """
         Initialize sharpness cache.
         
