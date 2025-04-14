@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from tqdm import tqdm
 from .resize import resize_image
-from .colmap import ColmapPruner
+# from .colmap import ColmapPruner
 from .cache import SharpnessCache
 
 class ColmapProcessor:
@@ -61,13 +61,13 @@ class ColmapProcessor:
                 raise ValueError("Output path exists but is not a directory")
             output_path.mkdir(parents=True, exist_ok=True)
     
+        raise NotImplementedError("Not implemented yet")
         # TODO: support multiple images folder for one reconstruction
         pruner = ColmapPruner(
             colmap_dir=colmap_path,
             sharpness_cache=self.cache,
         )
     
-        raise NotImplementedError("Not implemented yet")
         images_to_keep = pruner.prune(output_dir=output_path)
 
         # TODO: this does not work in case of not ouput path

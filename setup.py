@@ -44,7 +44,7 @@ setup(
         "opencv-python>=4.5.0",
         "numpy>=1.19.0",
         "tqdm>=4.60.0",
-        "pycolmap @ git+https://github.com/rmbrualla/pycolmap@cc7ea4b7301720ac29287dbe450952511b32125e",
+        "pycolmap @ git+https://github.com/speridlabs/pycolmap",
         "matplotlib>=3.5.0",
         "matplotlib>=3.5.0",
         "scikit-learn>=1.6.1",
