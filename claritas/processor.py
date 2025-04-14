@@ -1,4 +1,5 @@
 import os
+from typing import Optional
 import cv2
 import shutil
 import subprocess
@@ -6,25 +7,79 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from tqdm import tqdm
-from .cache import SharpnessCache
 from .resize import resize_image
+from .colmap import ColmapPruner
+from .cache import SharpnessCache
 
-def check_dependencies():
-    """Check if required dependencies are installed and accessible."""
-    missing = []
-    if shutil.which('ffmpeg') is None:
-        missing.append("ffmpeg")
-    if shutil.which('exiftool') is None:
-        missing.append("exiftool")
+class ColmapProcessor:
+    workers: int
+    show_progress: bool
+    cache: SharpnessCache
+
+    """Class for processing images using COLMAP."""
+    def __init__(self, workers=None, show_progress=True, cache=SharpnessCache | None):
+        """
+        Initialize the COLMAP processor.
         
-    if missing:
-        tools = ", ".join(missing)
-        raise RuntimeError(
-            f"{tools} not found. Please install required tools first.\n"
-            "On Ubuntu/Debian: sudo apt-get install ffmpeg libimage-exiftool-perl\n"
-            "On MacOS: brew install ffmpeg exiftool\n"
-            "On Windows: Download ffmpeg from https://www.ffmpeg.org/download.html and exiftool from https://exiftool.org/"
+        Args:
+            workers: Number of parallel workers (None for auto)
+            show_progress: Show progress bars
+        """
+        self.workers = workers if workers else max(1, (os.cpu_count() or 2) - 1)
+        self.show_progress = show_progress
+        self.cache = SharpnessCache()
+
+        if isinstance(cache, SharpnessCache):
+            self.cache = cache
+
+    # TODO: add colmap purning options here
+    def prune_colmap(self, colmap_dir:str, output_dir:Optional[str]=None):
+        """
+        Prune images based on a COLMAP reconstruction to remove redundant views.
+
+        Args:
+            colmap_dir: Path to the COLMAP reconstruction
+            output_path: Directory to save the selected sharp images
+                        If None, only returns list of images to keep
+            distance_threshold: Distance threshold for clustering (if None, auto-calculated)
+            angle_threshold: Angle threshold in degrees for viewing direction similarity
+            reduction_ratio: Target ratio of images to keep (0.0-1.0)
+        """
+        colmap_path = Path(colmap_dir)
+        if not colmap_path.exists(): raise ValueError("Invalid COLMAP path")
+
+        images_path = colmap_path / "images"
+        if not images_path.exists(): 
+            images_path = colmap_path.parent / "images"
+            if not images_path.exists(): raise ValueError("Images not found in COLMAP path")
+
+        output_path: Optional[Path] = None
+
+        if output_dir:
+            output_path = Path(output_dir)
+            if output_path.exists() and not output_path.is_dir():
+                raise ValueError("Output path exists but is not a directory")
+            output_path.mkdir(parents=True, exist_ok=True)
+    
+        # TODO: support multiple images folder for one reconstruction
+        pruner = ColmapPruner(
+            colmap_dir=colmap_path,
+            sharpness_cache=self.cache,
         )
+    
+        raise NotImplementedError("Not implemented yet")
+        images_to_keep = pruner.prune(output_dir=output_path)
+
+        # TODO: this does not work in case of not ouput path
+        def copy_file(src, dst):
+            shutil.copy2(src, dst)
+
+        with ThreadPoolExecutor(max_workers=self.workers) as executor:
+            try:
+                list(tqdm(executor.map(copy_file, images_to_keep, [output_path / img.name for img in images_to_keep]), total=len(images_to_keep), desc="Copying selected images"))
+            except KeyboardInterrupt:
+                print("\nInterrupted by user. Shutting down...")
+                executor.shutdown(wait=False)
 
 class ImageProcessor:
 
@@ -43,8 +98,6 @@ class ImageProcessor:
             show_progress: Show progress bars
             use_cache: Enable computation caching
         """
-        check_dependencies()  # Verify ffmpeg is installed
-
         self.workers = workers if workers else max(1, (os.cpu_count() or 2) - 1)
         self.show_progress = show_progress
         self.cache = SharpnessCache() if use_cache else None

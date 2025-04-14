@@ -1,6 +1,6 @@
 import argparse
 from pathlib import Path
-from .processor import ImageProcessor
+from .processor import ImageProcessor, ColmapProcessor
 
 def main():
     parser = argparse.ArgumentParser(
@@ -22,6 +22,9 @@ def main():
     size_group = resize_group.add_mutually_exclusive_group()
     size_group.add_argument('--max-width', type=int, help="Target width for resizing (height will be calculated to maintain aspect ratio)")
     size_group.add_argument('--max-height', type=int, help="Target height for resizing (width will be calculated to maintain aspect ratio)")
+
+    colmap_group = parser.add_argument_group('COLMAP pruning options')
+    colmap_group.add_argument('--colmap-dir', help="Path to COLMAP reconstruction for camera pruning")
     
     args = parser.parse_args()
 
@@ -32,11 +35,24 @@ def main():
         use_cache=not args.no_cache
     )
 
+    colmap_processor = ColmapProcessor(
+        workers=args.workers,
+        show_progress=not args.no_progress,
+    )
+
     if args.input == args.output:
         raise ValueError("Input and output paths cannot be the same")
     
     try:
         input_path = args.input
+
+        if args.colmap_dir:
+            print(f"Pruning based on COLMAP reconstruction...")
+            colmap_processor.prune_colmap(
+                colmap_dir=args.colmap_dir,
+                output_dir=args.output,
+            )
+            return 0
 
         if args.input.lower().endswith(('.mp4', '.avi', '.mov', '.mkv')):
             if not args.output:
@@ -77,7 +93,7 @@ def main():
 
             if not (args.count or args.percentage):
                 return 0
-        
+
         if not (args.count or args.percentage):
                 raise ValueError("Either --count or --percentage must be specified for image folder processing")
 
