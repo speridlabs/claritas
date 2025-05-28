@@ -1,3 +1,7 @@
+ADD mask of images with yolo and sam
+
+Be able to take a list of videos as input
+
 ADD export of exif to extracted frames
 
 ADD colmap modify support
