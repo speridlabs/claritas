@@ -35,7 +35,7 @@ def resize_image(img_path: Union[Path, str], output_path: Optional[Union[Path, s
             '-hide_banner', 
             '-loglevel', 'error',
             '-i', str(img_path), 
-            '-map_metadata 0'
+            '-map_metadata', '0',
             '-vf', scale_filter, 
             '-q:v', str(quality),
             str(target_file)
