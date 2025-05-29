@@ -8,9 +8,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 def copy_metadata(src: Union[Path, str], dst: Union[Path, str]):
     """Copy all tags from src to dst in place."""
     subprocess.run([
-        'exiftool', '-overwrite_original',
-        '-TagsFromFile', str(src),
-        '--all:all', str(dst)
+        'exiftool', 
+        '-q',          # quiet: no banner
+        '-q',          # really quiet: no "n files updated"
+        '-overwrite_original',
+        '-tagsfromfile', str(src),
+        '-all:all', str(dst)
     ], check=True)
 
 
