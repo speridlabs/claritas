@@ -10,6 +10,7 @@ from tqdm import tqdm
 from .resize import resize_image
 # from .colmap import ColmapPruner
 from .cache import SharpnessCache
+from .metadata import copy_metadata_bulk
 
 class ColmapProcessor:
     workers: int
@@ -122,8 +123,16 @@ class ImageProcessor:
             '-q:v', '1',
             str(output_dir / 'frame%05d.jpg')
         ]
+
         subprocess.run(cmd)
-        
+
+        frames = list(output_dir.glob('*.jpg'))
+
+        try:
+            copy_metadata_bulk(video_path, frames, workers=self.workers, show_progress=self.show_progress)
+        except Exception as e:
+            print(f"Warning: failed to copy metadata to frames: {e}")
+
         return output_dir
         
     def compute_sharpness(self, image_path):

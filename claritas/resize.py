@@ -2,6 +2,7 @@ import os
 import subprocess
 from pathlib import Path
 from typing import Optional, Union
+from .metadata import copy_metadata
 
 def resize_image(img_path: Union[Path, str], output_path: Optional[Union[Path, str]] = None, 
                 scale_filter: str = "shouldthrowerror", quality: int = 1) -> Optional[Path]:
@@ -35,7 +36,6 @@ def resize_image(img_path: Union[Path, str], output_path: Optional[Union[Path, s
             '-hide_banner', 
             '-loglevel', 'error',
             '-i', str(img_path), 
-            '-map_metadata', '0',
             '-vf', scale_filter, 
             '-q:v', str(quality),
             str(target_file)
@@ -44,9 +44,16 @@ def resize_image(img_path: Union[Path, str], output_path: Optional[Union[Path, s
         result = subprocess.run(cmd, check=True, capture_output=True, text=True)
                 
         if target_file.exists():
+
+            try:
+                copy_metadata(img_path, target_file)
+            except Exception as e:
+                print(f"Warning: metadata copy failed for {target_file}: {e}")
+
             if in_place:
                 target_file.replace(img_path)
                 return img_path
+
             return target_file
         
         if result.stderr:
