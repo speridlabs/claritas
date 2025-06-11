@@ -1,5 +1,4 @@
 import shutil
-import subprocess
 from setuptools import setup, find_packages
 
 def check_dependencies():
@@ -19,22 +18,7 @@ def check_dependencies():
             "On Windows: Download ffmpeg from https://www.ffmpeg.org/download.html and exiftool from https://exiftool.org/"
         )
 
-def check_ffmpeg():
-    """Check if ffmpeg is installed and accessible in the system path."""
-    try:
-        subprocess.run(['ffmpeg', '-version'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
-        return True
-    except FileNotFoundError:
-        print("WARNING: ffmpeg is not found in the system PATH.")
-        print("Claritas requires ffmpeg to be installed for image and video processing.")
-        print("Please install ffmpeg before using this library:")
-        print("  - Linux: 'sudo apt-get install ffmpeg' or equivalent for your distribution")
-        print("  - macOS: 'brew install ffmpeg'")
-        print("  - Windows: Download from https://ffmpeg.org/download.html or use Chocolatey/Scoop")
-        return False
-
-# Check for ffmpeg during installation
-check_ffmpeg()
+check_dependencies()
 
 setup(
     name="claritas",
