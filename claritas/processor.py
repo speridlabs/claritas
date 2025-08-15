@@ -112,6 +112,10 @@ class ImageProcessor:
             output_path: Directory to save extracted frames
         """
         video_path = Path(input_path)
+
+        if not video_path.exists():
+            raise FileNotFoundError(f"Input video not found: {input_path}")
+
         output_dir = Path(output_path)
         output_dir.mkdir(parents=True, exist_ok=True)
         
@@ -129,7 +133,9 @@ class ImageProcessor:
         frames = list(output_dir.glob('*.jpg'))
 
         try:
-            copy_video_metadata(video_path, frames, workers=self.workers, show_progress=self.show_progress)
+            print(f"Copying metadata from video {video_path} to frames...")
+            # TODO this is too slow for large videos
+            # copy_video_metadata(video_path, frames, workers=self.workers, show_progress=self.show_progress)
         except Exception as e:
             print(f"Warning: failed to copy metadata to frames: {e}")
 

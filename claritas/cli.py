@@ -1,5 +1,6 @@
 import argparse
 from pathlib import Path
+from .metadata import copy_video_metadata
 from .processor import ImageProcessor, ColmapProcessor
 
 def main():
@@ -15,6 +16,7 @@ def main():
     parser.add_argument('--workers', type=int, help="Number of parallel workers")
     parser.add_argument('--no-cache', action='store_true', help="Disable caching of sharpness calculations")
     parser.add_argument('--no-progress', action='store_true', help="Hide progress bars")
+    parser.add_argument('--only-copy-metadata', action='store_true', help="Only copy metadata from input video to output folder of images.")
 
     resize_group = parser.add_argument_group('Resize options')
     resize_group.add_argument('--resize', type=int, nargs='?', const=True, 
@@ -57,6 +59,29 @@ def main():
         if args.input.lower().endswith(('.mp4', '.avi', '.mov', '.mkv')):
             if not args.output:
                 raise ValueError("Output directory required for video processing")
+
+            if args.only_copy_metadata:
+                video_path = Path(args.input)
+                output_folder = Path(args.output)
+                if not output_folder.is_dir():
+                    raise ValueError("--output must be a directory of images when using --only-copy-metadata")
+
+                extensions = ('.jpg', '.jpeg', '.png', '.bmp', '.webp')
+                images = [p for p in output_folder.rglob('*') if p.suffix.lower() in extensions]
+
+                if not images:
+                    print("No images found in the output directory.")
+                    return 0
+
+                print(f"Copying metadata from video {video_path} to {len(images)} images in {output_folder}...")
+                copy_video_metadata(
+                    src_video=video_path,
+                    dst_frames=images,
+                    workers=args.workers,
+                    show_progress=not args.no_progress
+                )
+                print("Successfully copied metadata.")
+                return 0
 
             processor.process_video(args.input, args.output)
             print(f"Successfully extracted frames to {args.output}")
