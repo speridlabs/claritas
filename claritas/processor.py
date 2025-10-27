@@ -10,7 +10,7 @@ from tqdm import tqdm
 from .resize import resize_image
 # from .colmap import ColmapPruner
 from .cache import SharpnessCache
-from .metadata import copy_video_metadata 
+from .metadata import copy_video_metadata
 
 class ColmapProcessor:
     workers: int
@@ -21,7 +21,7 @@ class ColmapProcessor:
     def __init__(self, workers=None, show_progress=True, cache=SharpnessCache | None):
         """
         Initialize the COLMAP processor.
-        
+
         Args:
             workers: Number of parallel workers (None for auto)
             show_progress: Show progress bars
@@ -50,7 +50,7 @@ class ColmapProcessor:
         if not colmap_path.exists(): raise ValueError("Invalid COLMAP path")
 
         images_path = colmap_path / "images"
-        if not images_path.exists(): 
+        if not images_path.exists():
             images_path = colmap_path.parent / "images"
             if not images_path.exists(): raise ValueError("Images not found in COLMAP path")
 
@@ -61,14 +61,14 @@ class ColmapProcessor:
             if output_path.exists() and not output_path.is_dir():
                 raise ValueError("Output path exists but is not a directory")
             output_path.mkdir(parents=True, exist_ok=True)
-    
+
         raise NotImplementedError("Not implemented yet")
         # TODO: support multiple images folder for one reconstruction
         pruner = ColmapPruner(
             colmap_dir=colmap_path,
             sharpness_cache=self.cache,
         )
-    
+
         images_to_keep = pruner.prune(output_dir=output_path)
 
         # TODO: this does not work in case of not ouput path
@@ -92,7 +92,7 @@ class ImageProcessor:
 
         """
         Initialize the image processor.
-        
+
         Args:
 
             workers: Number of parallel workers (None for auto)
@@ -102,23 +102,37 @@ class ImageProcessor:
         self.workers = workers if workers else max(1, (os.cpu_count() or 2) - 1)
         self.show_progress = show_progress
         self.cache = SharpnessCache() if use_cache else None
-        
+
     def process_video(self, input_path, output_path):
         """
         Extract frames from video.
-        
+
         Args:
             input_path: Path to input video file
             output_path: Directory to save extracted frames
+
+        Returns:
+            tuple: (output_dir, num_frames, fps)
+                - output_dir: Path to the directory containing extracted frames
+                - num_frames: Number of frames extracted
+                - fps: Frames per second of the source video
         """
         video_path = Path(input_path)
 
         if not video_path.exists():
             raise FileNotFoundError(f"Input video not found: {input_path}")
 
+        # Get video FPS using OpenCV
+        cap = cv2.VideoCapture(str(video_path))
+        if not cap.isOpened():
+            raise ValueError(f"Failed to open video: {input_path}")
+
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        cap.release()
+
         output_dir = Path(output_path)
         output_dir.mkdir(parents=True, exist_ok=True)
-        
+
         cmd = [
             'ffmpeg', '-i', str(video_path),
             '-vsync', 'vfr',
@@ -131,6 +145,7 @@ class ImageProcessor:
         subprocess.run(cmd)
 
         frames = list(output_dir.glob('*.jpg'))
+        num_frames = len(frames)
 
         try:
             print(f"Copying metadata from video {video_path} to frames...")
@@ -139,8 +154,8 @@ class ImageProcessor:
         except Exception as e:
             print(f"Warning: failed to copy metadata to frames: {e}")
 
-        return output_dir
-        
+        return output_dir, num_frames, fps
+
     def compute_sharpness(self, image_path):
         """Compute image sharpness score."""
         image_path = Path(image_path).resolve()  # Get absolute path and resolve symlinks
@@ -154,15 +169,15 @@ class ImageProcessor:
 
             if not image_path.exists():
                 raise FileNotFoundError(f"Image file not found: {image_path}")
-                
+
             img = cv2.imread(str(image_path))
             if img is None:
                 raise ValueError(f"Failed to read image: {image_path}")
         except Exception as e:
             raise ValueError(f"Error reading image {image_path}: {str(e)}")
-            
+
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        
+
         # Try CUDA if available
         try:
             if hasattr(cv2, 'cuda') and cv2.cuda.getCudaEnabledDeviceCount() > 0:
@@ -176,16 +191,16 @@ class ImageProcessor:
             if self.show_progress:
                 print(f"CUDA processing failed, falling back to CPU: {str(e)}")
             score = cv2.Laplacian(gray, cv2.CV_64F).var()
-            
+
         if self.cache:
             self.cache.set(image_path, score)
-            
+
         return score
-        
+
     def resize_images(self, input_path, output_path=None, width=None, height=None, max_size=None):
         """
         Resize images using ffmpeg, maintaining aspect ratio.
-        
+
         Args:
             input_path: Path to input image or directory containing images
             output_path: Directory to save resized images. If None, modifies in-place
@@ -193,12 +208,12 @@ class ImageProcessor:
             height: Target height (width will be calculated to maintain aspect ratio)
             max_size: Maximum size for either dimension (maintains aspect ratio)
 
-            
+
         Returns:
             List of paths to resized images
         """
         input_path = Path(input_path)
-        
+
         if input_path.is_file():
             if not any(ext in input_path.name.lower() for ext in ['.jpg', '.jpeg', '.png', '.webp', '.bmp']):
                 raise ValueError(f"Unsupported file type: {input_path}")
@@ -210,51 +225,51 @@ class ImageProcessor:
             is_dir = True
         else:
             raise ValueError(f"Invalid input path: {input_path}")
-            
+
         if not images:
             raise ValueError("No images found")
-            
+
         if output_path:
             output_path = Path(output_path)
             if output_path.exists() and not output_path.is_dir():
                 raise ValueError(f"Output path exists but is not a directory: {output_path}")
             output_path.mkdir(parents=True, exist_ok=True)
-        
+
         if not any([width, height, max_size]):
             raise ValueError("Either width, height, or max_size must be specified")
-        
+
         scale_filter = None
-        
+
         if max_size is not None:
             scale_filter = f"scale='if(gt(iw,ih),min(iw,{max_size}),-2)':'if(gt(iw,ih),-2,min(ih,{max_size}))'"
         elif width is not None:
             scale_filter = f"scale={width}:-2"
         elif height is not None:
             scale_filter = f"scale=-2:{height}"
-        
+
         if scale_filter is None:
             raise ValueError("Failed to create a valid scale filter. Please specify width, height, or max_size.")
-        
+
         # Process images in parallel
         resized_images = []
         with ThreadPoolExecutor(max_workers=self.workers) as executor:
 
             future_to_path = {
                 executor.submit(
-                    resize_image, 
-                    img, 
+                    resize_image,
+                    img,
                     output_path if output_path else None,
                     scale_filter,
                     1
                 ): img for img in images
             }
-            
+
             try:
                 if self.show_progress:
                     futures = tqdm(as_completed(future_to_path), total=len(images), desc="Resizing images")
                 else:
                     futures = as_completed(future_to_path)
-                    
+
                 for future in futures:
                     result = future.result()
                     if result:
@@ -263,20 +278,20 @@ class ImageProcessor:
                 print("\nInterrupted by user. Shutting down...")
                 executor.shutdown(wait=False, cancel_futures=True)
                 raise
-        
+
         # Copy cache file if applicable
         if is_dir and output_path and self.cache:
             cache_path = input_path / '.claritas_cache.json'
             if cache_path.exists():
                 output_cache = output_path / '.claritas_cache.json'
                 shutil.copy2(str(cache_path), str(output_cache))
-                
+
         return resized_images
-        
+
     def select_sharp_images(self, input_path, output_path=None, target_count=None, target_percentage=None, groups=None):
         """
         Select sharp images from input directory.
-        
+
         Args:
             input_path: Directory containing input images
             output_path: Directory to save selected images. If None, modifies in-place
@@ -293,23 +308,23 @@ class ImageProcessor:
             cache_path = input_path / '.claritas_cache.json'
             self.cache.cache_file = str(cache_path)
             self.cache.load()
-            
+
         if output_path:
             output_path = Path(output_path)
-            
+
         # Get all images
         extensions = ('.jpg', '.jpeg', '.png', '.bmp', '.webp')
         images = [p for p in input_path.rglob('*') if p.suffix.lower() in extensions]
-        
+
         if not images:
             raise ValueError("No images found")
-            
+
         total = len(images)
 
         # Validate input parameters
         if target_count is None and target_percentage is None:
             raise ValueError("Either target_count or target_percentage must be specified")
-            
+
         if groups:
             if groups > total:
                 groups = total  # Adjust groups if too many
@@ -337,18 +352,18 @@ class ImageProcessor:
                     raise ValueError("Either target_count or target_percentage must be specified")
                 total_selected = min(target_count, total)
                 print(f"Processing {total} images, selecting {total_selected} images")
-        
+
         # Compute sharpness scores
         scores = []
         with ThreadPoolExecutor(max_workers=self.workers) as executor:
-            future_to_path = {executor.submit(self.compute_sharpness, img): img 
+            future_to_path = {executor.submit(self.compute_sharpness, img): img
                             for img in images}
             try:
                 if self.show_progress:
                     futures = tqdm(future_to_path, total=len(images), desc="Computing sharpness")
                 else:
                     futures = future_to_path
-                    
+
                 for future in futures:
                     path = future_to_path[future]
                     try:
@@ -360,7 +375,7 @@ class ImageProcessor:
                 print("\nInterrupted by user. Shutting down...")
                 executor.shutdown(wait=False, cancel_futures=True)
                 raise
-                    
+
         # Handle grouping
         if groups:
             selected = []
@@ -381,7 +396,7 @@ class ImageProcessor:
             scores.sort(reverse=True)
             # Use total_selected instead of target_count since it's calculated for both percentage and count modes
             selected = [path for _, path in scores[:total_selected]]
-            
+
         if not output_path:
             for score, path in scores:
                 if path not in selected:
@@ -407,5 +422,5 @@ class ImageProcessor:
                 output_cache = output_path / '.claritas_cache.json'
                 self.cache.cache_file = str(output_cache)
                 self.cache.save()
-            
+
         return selected
